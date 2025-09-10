@@ -1,0 +1,263 @@
+#include <iostream>
+#include <vector>
+#include <string>
+#include <memory>
+#include <algorithm>
+
+using namespace std;
+
+class Appointment {
+private:
+    int id;
+    string date;
+    string time;
+    string reason;
+    string status;
+    int patientID;
+    int doctorID;
+    static int nextId;
+public:
+    Appointment(const string& d, const string& t, const string& r, int pID, int dID)
+        : id(nextId++), date(d), time(t), reason(r), status("Scheduled"), patientID(pID), doctorID(dID) {}
+    ~Appointment() = default;
+    int getID() const { return id; }
+    int getPatientID() const { return patientID; }
+    int getDoctorID() const { return doctorID; }
+    string getStatus() const { return status; }
+    void updateStatus(const string& newStatus) { status = newStatus; }
+    void display() const {
+        cout << "Appointment ID: " << id << " | Date: " << date << " | Time: " << time << '\n';
+        cout << "Reason: " << reason << '\n';
+        cout << "Status: " << status << " | PatientID: " << patientID << " | DoctorID: " << doctorID << '\n';
+    }
+};
+
+int Appointment::nextId = 1;
+
+class Patient {
+protected:
+    string name;
+    int age;
+    int patientID;
+    vector<shared_ptr<Appointment>> medHistory;
+public:
+    Patient(const string& n, int a, int pid) : name(n), age(a), patientID(pid) {}
+    virtual ~Patient() = default;
+    int getPatientID() const { return patientID; }
+    string getName() const { return name; }
+    virtual void scheduleAppointment(const shared_ptr<Appointment>& appt) {
+        if (!appt) {
+            cout << "Invalid appointment.\n";
+            return;
+        }
+        medHistory.push_back(appt);
+        cout << "Appointment scheduled for patient: " << name << " (ID: " << patientID << ")\n";
+    }
+    void addHistoryRecord(const string& record) { /* kept for API parity */ }
+    virtual void displayInfo() const {
+        cout << "Patient name: " << name << '\n';
+        cout << "ID: " << patientID << '\n';
+        cout << "Age: " << age << '\n';
+        cout << "Medical history count: " << medHistory.size() << '\n';
+        if (medHistory.empty()) {
+            cout << "No medical records available.\n";
+        } else {
+            for (const auto& appt : medHistory) {
+                if (appt) appt->display();
+            }
+        }
+    }
+};
+
+class ChronicPatient : public Patient {
+private:
+    string condition;
+    string lastCheckupDate;
+public:
+    ChronicPatient(const string& n, int a, int pid, const string& cond)
+        : Patient(n, a, pid), condition(cond), lastCheckupDate("N/A") {}
+    ~ChronicPatient() override = default;
+    void scheduleAppointment(const shared_ptr<Appointment>& appt) override {
+        if (!appt) {
+            cout << "Invalid appointment.\n";
+            return;
+        }
+        cout << "Scheduling chronic care appointment for patient: " << name << " (ID: " << patientID << ")\n";
+        cout << "Condition: " << condition << '\n';
+        cout << "Recommended follow-up: every 3 months.\n";
+        medHistory.push_back(appt);
+    }
+    void updateLastCheckup(const string& date) { lastCheckupDate = date; }
+    void displayInfo() const override {
+        Patient::displayInfo();
+        cout << "Chronic Condition: " << condition << '\n';
+        cout << "Last check-up: " << lastCheckupDate << '\n';
+    }
+};
+
+class Doctor {
+private:
+    string name;
+    int id;
+    string spec;
+    vector<shared_ptr<Appointment>> assigned;
+public:
+    Doctor(const string& n, int i, const string& s) : name(n), id(i), spec(s) {}
+    ~Doctor() = default;
+    string getName() const { return name; }
+    int getID() const { return id; }
+    void assignAppointment(const shared_ptr<Appointment>& appt) {
+        if (!appt) {
+            cout << "Invalid appointment.\n";
+            return;
+        }
+        auto it = find_if(assigned.begin(), assigned.end(),
+                          [&](const shared_ptr<Appointment>& a){ return a && a->getID() == appt->getID(); });
+        if (it == assigned.end()) {
+            assigned.push_back(appt);
+            cout << "Appointment ID " << appt->getID() << " assigned to Dr. " << name << '\n';
+        } else {
+            cout << "Appointment already assigned to Dr. " << name << '\n';
+        }
+    }
+    void viewAssignedAppointments() const {
+        cout << "Appointments assigned to Dr. " << name << " (ID: " << id << ")\n";
+        if (assigned.empty()) {
+            cout << "No appointments assigned.\n";
+            return;
+        }
+        for (const auto& appt : assigned) {
+            if (appt) appt->display();
+        }
+    }
+    void updateAppointmentStatusByPatientID(int patientID, const string& newStatus) {
+        for (auto& appt : assigned) {
+            if (appt && appt->getPatientID() == patientID) {
+                appt->updateStatus(newStatus);
+                cout << "Updated appointment ID " << appt->getID() << " status to " << newStatus << '\n';
+                return;
+            }
+        }
+        cout << "No appointment found for patient ID: " << patientID << '\n';
+    }
+};
+
+class Clinic {
+private:
+    vector<shared_ptr<Patient>> patients;
+    vector<shared_ptr<Doctor>> doctors;
+    vector<shared_ptr<Appointment>> appointments;
+public:
+    Clinic() = default;
+    ~Clinic() = default;
+    void addPatient(const shared_ptr<Patient>& p) {
+        if (!p) return;
+        auto it = find_if(patients.begin(), patients.end(),
+                          [&](const shared_ptr<Patient>& x){ return x && x->getPatientID() == p->getPatientID(); });
+        if (it == patients.end()) {
+            patients.push_back(p);
+            cout << "Patient added: " << p->getName() << " (ID: " << p->getPatientID() << ")\n";
+        } else {
+            cout << "Patient with ID " << p->getPatientID() << " already exists.\n";
+        }
+    }
+    void addDoctor(const shared_ptr<Doctor>& d) {
+        if (!d) return;
+        auto it = find_if(doctors.begin(), doctors.end(),
+                          [&](const shared_ptr<Doctor>& x){ return x && x->getID() == d->getID(); });
+        if (it == doctors.end()) {
+            doctors.push_back(d);
+            cout << "Doctor added: " << d->getName() << " (ID: " << d->getID() << ")\n";
+        } else {
+            cout << "Doctor with ID " << d->getID() << " already exists.\n";
+        }
+    }
+    shared_ptr<Appointment> addAppointment(const string& date, const string& time, const string& reason, int patientID, int doctorID) {
+        auto pat = find_if(patients.begin(), patients.end(),
+                           [&](const shared_ptr<Patient>& p){ return p && p->getPatientID() == patientID; });
+        auto doc = find_if(doctors.begin(), doctors.end(),
+                           [&](const shared_ptr<Doctor>& d){ return d && d->getID() == doctorID; });
+        if (pat == patients.end()) {
+            cout << "No patient with ID " << patientID << '\n';
+            return nullptr;
+        }
+        if (doc == doctors.end()) {
+            cout << "No doctor with ID " << doctorID << '\n';
+            return nullptr;
+        }
+        auto appt = make_shared<Appointment>(date, time, reason, patientID, doctorID);
+        appointments.push_back(appt);
+        (*doc)->assignAppointment(appt);
+        (*pat)->scheduleAppointment(appt);
+        cout << "Appointment ID " << appt->getID() << " created.\n";
+        return appt;
+    }
+    void cancelAppointmentByID(int appointmentID) {
+        auto it = find_if(appointments.begin(), appointments.end(),
+                          [&](const shared_ptr<Appointment>& a){ return a && a->getID() == appointmentID; });
+        if (it == appointments.end()) {
+            cout << "No appointment with ID " << appointmentID << '\n';
+            return;
+        }
+        if ((*it)->getStatus() != "Scheduled") {
+            cout << "Appointment is not in Scheduled state.\n";
+            return;
+        }
+        (*it)->updateStatus("Canceled");
+        cout << "Appointment ID " << appointmentID << " canceled.\n";
+    }
+    void displayAllPatients() const {
+        cout << "All patients:\n";
+        if (patients.empty()) {
+            cout << "None\n";
+            return;
+        }
+        for (const auto& p : patients) {
+            if (p) p->displayInfo();
+            cout << '\n';
+        }
+    }
+    void displayAllDoctors() const {
+        cout << "All doctors:\n";
+        if (doctors.empty()) {
+            cout << "None\n";
+            return;
+        }
+        for (const auto& d : doctors) {
+            if (d) d->viewAssignedAppointments();
+            cout << '\n';
+        }
+    }
+    void displayAllAppointments() const {
+        cout << "All appointments:\n";
+        if (appointments.empty()) {
+            cout << "None\n";
+            return;
+        }
+        for (const auto& a : appointments) {
+            if (a) a->display();
+            cout << '\n';
+        }
+    }
+};
+
+int main() {
+    Clinic clinic;
+    auto drSmith = make_shared<Doctor>("John Smith", 101, "Cardiology");
+    auto drJones = make_shared<Doctor>("Emily Jones", 102, "Dermatology");
+    clinic.addDoctor(drSmith);
+    clinic.addDoctor(drJones);
+    auto patient1 = make_shared<Patient>("Alice Brown", 30, 201);
+    auto patient2 = make_shared<ChronicPatient>("Bob White", 45, 202, "Diabetes");
+    clinic.addPatient(patient1);
+    clinic.addPatient(patient2);
+    auto appt1 = clinic.addAppointment("2024-07-15", "10:00", "Regular Checkup", 201, 101);
+    auto appt2 = clinic.addAppointment("2024-07-20", "14:00", "Skin Rash", 202, 102);
+    clinic.displayAllPatients();
+    clinic.displayAllDoctors();
+    clinic.displayAllAppointments();
+    if (appt1) clinic.cancelAppointmentByID(appt1->getID());
+    drJones->updateAppointmentStatusByPatientID(202, "Completed");
+    clinic.displayAllAppointments();
+    return 0;
+}
